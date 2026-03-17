@@ -271,4 +271,4 @@ http://localhost:8000/docs
 Building production-grade AI systems.  
 Open to AI Engineering roles.
 
-[LinkedIn](https://linkedin.com/in/yourprofile) · [GitHub](https://github.com/yourusername)
+[LinkedIn](https://www.linkedin.com/in/vikramv2002/)
