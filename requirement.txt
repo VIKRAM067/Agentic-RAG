@@ -1,0 +1,39 @@
+# FastAPI
+fastapi
+uvicorn[standard]
+python-multipart
+
+# LangChain
+langchain
+langchain-core
+langchain-community
+langchain-groq
+
+# LangGraph
+langgraph
+
+# LangSmith
+langsmith
+
+# Embeddings + Reranker
+sentence-transformers
+
+# Vector Store
+chromadb
+
+# Hybrid Search
+rank-bm25
+
+# Document Loading
+pypdf
+pymupdf
+
+# Evaluation
+ragas
+datasets
+
+# Utilities
+python-dotenv
+pydantic
+pydantic-settings
+numpy

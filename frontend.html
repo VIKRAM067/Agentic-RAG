@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgenticRAG</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;500;700&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{--bg:#0a0a0a;--surface:#111;--border:#222;--accent:#00ff88;--accent2:#00aaff;--text:#e0e0e0;--muted:#555;--error:#ff4466}
+  body{background:var(--bg);color:var(--text);font-family:'DM Mono',monospace;min-height:100vh;font-size:13px;line-height:1.6}
+  .app{display:grid;grid-template-columns:280px 1fr;min-height:100vh}
+  .sidebar{background:var(--surface);border-right:1px solid var(--border);padding:24px 20px;display:flex;flex-direction:column;gap:24px}
+  .logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:var(--accent);letter-spacing:-0.5px}
+  .logo span{color:var(--muted);font-weight:400;font-size:11px;display:block;margin-top:2px;font-family:'DM Mono',monospace}
+  .section-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin-bottom:10px}
+  .upload-zone{border:1px dashed var(--border);border-radius:8px;padding:20px;text-align:center;cursor:pointer;transition:all 0.2s;position:relative}
+  .upload-zone:hover{border-color:var(--accent);background:rgba(0,255,136,0.03)}
+  .upload-zone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+  .upload-icon{font-size:24px;margin-bottom:8px;color:var(--accent)}
+  .upload-text{color:var(--muted);font-size:11px}
+  .file-list{display:flex;flex-direction:column;gap:6px}
+  .file-item{background:#1a1a1a;border:1px solid var(--border);border-radius:6px;padding:8px 10px;display:flex;align-items:center;gap:8px;font-size:11px}
+  .file-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);flex-shrink:0}
+  .file-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+  .file-pages{color:var(--muted);flex-shrink:0}
+  .status-bar{margin-top:auto;padding:10px;background:#1a1a1a;border-radius:6px;border:1px solid var(--border);font-size:11px;color:var(--muted)}
+  .status-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);margin-right:6px;animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+  .main{display:flex;flex-direction:column;height:100vh}
+  .top-bar{padding:16px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+  .top-bar-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:500;color:var(--text)}
+  .badge{font-size:10px;padding:3px 8px;border-radius:4px;background:rgba(0,255,136,0.1);color:var(--accent);border:1px solid rgba(0,255,136,0.2)}
+  .chat-area{flex:1;overflow-y:auto;padding:24px;display:flex;flex-direction:column;gap:16px}
+  .empty-state{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--muted);gap:12px;text-align:center}
+  .empty-icon{font-size:32px;opacity:0.3}
+  .empty-text{font-size:12px;max-width:200px}
+  .msg{max-width:80%}
+  .msg.user{align-self:flex-end}
+  .msg.assistant{align-self:flex-start}
+  .msg-bubble{padding:12px 16px;border-radius:8px;font-size:13px;line-height:1.7}
+  .msg.user .msg-bubble{background:rgba(0,170,255,0.1);border:1px solid rgba(0,170,255,0.2);color:var(--text)}
+  .msg.assistant .msg-bubble{background:#1a1a1a;border:1px solid var(--border);color:var(--text)}
+  .msg-meta{font-size:10px;color:var(--muted);margin-top:6px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .grade-badge{padding:2px 6px;border-radius:3px;font-size:10px}
+  .grade-good{background:rgba(0,255,136,0.1);color:var(--accent);border:1px solid rgba(0,255,136,0.2)}
+  .grade-bad{background:rgba(255,68,102,0.1);color:var(--error);border:1px solid rgba(255,68,102,0.2)}
+  .sources{margin-top:8px;display:flex;flex-direction:column;gap:4px}
+  .source-item{font-size:10px;color:var(--muted);padding:4px 8px;background:#111;border-radius:4px;border-left:2px solid var(--accent)}
+  .retry-badge{font-size:10px;color:var(--muted);padding:2px 6px;background:#1a1a1a;border-radius:3px;border:1px solid var(--border)}
+  .input-area{padding:16px 24px;border-top:1px solid var(--border);display:flex;gap:10px;align-items:flex-end}
+  .input-wrap{flex:1;position:relative}
+  .query-input{width:100%;background:#1a1a1a;border:1px solid var(--border);border-radius:8px;padding:12px 16px;color:var(--text);font-family:'DM Mono',monospace;font-size:13px;resize:none;outline:none;transition:border 0.2s;min-height:48px;max-height:120px}
+  .query-input:focus{border-color:var(--accent)}
+  .query-input::placeholder{color:var(--muted)}
+  .send-btn{background:var(--accent);color:#000;border:none;border-radius:8px;padding:12px 20px;cursor:pointer;font-family:'DM Mono',monospace;font-size:12px;font-weight:500;transition:all 0.2s;white-space:nowrap;height:48px}
+  .send-btn:hover{background:#00cc6a}
+  .send-btn:disabled{background:var(--muted);cursor:not-allowed}
+  .thinking{display:flex;gap:4px;align-items:center;padding:12px 16px;background:#1a1a1a;border:1px solid var(--border);border-radius:8px;width:fit-content}
+  .thinking span{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:bounce 1.2s infinite}
+  .thinking span:nth-child(2){animation-delay:0.2s}
+  .thinking span:nth-child(3){animation-delay:0.4s}
+  @keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-6px)}}
+  .node{font-size:9px;padding:2px 6px;border-radius:3px;background:#1a1a1a;border:1px solid var(--border);color:var(--muted);transition:all 0.3s}
+  .node.active{border-color:var(--accent);color:var(--accent);background:rgba(0,255,136,0.05)}
+  .progress{height:2px;background:var(--border);border-radius:2px;overflow:hidden;margin-top:8px;display:none}
+  .progress-bar{height:100%;background:var(--accent);border-radius:2px;transition:width 0.3s;width:0%}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="sidebar">
+    <div>
+      <div class="logo">AgenticRAG<span>// self-correcting retrieval agent</span></div>
+    </div>
+    <div>
+      <div class="section-label">Upload Documents</div>
+      <div class="upload-zone" id="uploadZone">
+        <input type="file" id="fileInput" accept=".pdf" />
+        <div class="upload-icon">⬆</div>
+        <div class="upload-text">Drop PDF here or click to browse</div>
+      </div>
+      <div class="progress" id="progress"><div class="progress-bar" id="progressBar"></div></div>
+      <div id="uploadMsg" style="font-size:11px;color:var(--muted);margin-top:6px;text-align:center"></div>
+    </div>
+    <div>
+      <div class="section-label">Indexed Files</div>
+      <div class="file-list" id="fileList">
+        <div style="font-size:11px;color:var(--muted)">No files indexed yet</div>
+      </div>
+    </div>
+    <div>
+      <div class="section-label">Agent Nodes</div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <div class="node" id="n-route">◈ route</div>
+        <div class="node" id="n-retrieve">◈ retrieve</div>
+        <div class="node" id="n-generate">◈ generate</div>
+        <div class="node" id="n-grade">◈ grade</div>
+        <div class="node" id="n-finalize">◈ finalize</div>
+      </div>
+    </div>
+    <div class="status-bar">
+      <span class="status-dot"></span>
+      <span>backend: localhost:8001</span>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="top-bar">
+      <span class="top-bar-title">Query Interface</span>
+      <span class="badge">llama-3.3-70b-versatile</span>
+    </div>
+    <div class="chat-area" id="chatArea">
+      <div class="empty-state" id="emptyState">
+        <div class="empty-icon">◎</div>
+        <div class="empty-text">Upload a PDF and ask a question to start</div>
+      </div>
+    </div>
+    <div class="input-area">
+      <div class="input-wrap">
+        <textarea class="query-input" id="queryInput" placeholder="Ask a question about your documents..." rows="1"></textarea>
+      </div>
+      <button class="send-btn" id="sendBtn" onclick="sendQuery()">send ↗</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = 'http://localhost:8001';
+const files = [];
+
+document.getElementById('fileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  await uploadFile(file);
+});
+
+async function uploadFile(file) {
+  const msg = document.getElementById('uploadMsg');
+  const prog = document.getElementById('progress');
+  const bar = document.getElementById('progressBar');
+  msg.textContent = 'uploading...';
+  msg.style.color = 'var(--muted)';
+  prog.style.display = 'block';
+  bar.style.width = '30%';
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    bar.style.width = '70%';
+    const res = await fetch(`${API}/ingest`, {method:'POST', body:form});
+    bar.style.width = '100%';
+    if (res.ok) {
+      const data = await res.json();
+      files.push(data);
+      renderFiles();
+      msg.style.color = 'var(--accent)';
+      msg.textContent = `✓ indexed ${data.chunks} chunks`;
+    } else {
+      msg.style.color = 'var(--error)';
+      msg.textContent = '✗ upload failed';
+    }
+  } catch(err) {
+    msg.style.color = 'var(--error)';
+    msg.textContent = '✗ server unreachable';
+  }
+  setTimeout(() => { prog.style.display = 'none'; bar.style.width = '0%'; }, 1000);
+}
+
+function renderFiles() {
+  const list = document.getElementById('fileList');
+  if (!files.length) { list.innerHTML = '<div style="font-size:11px;color:var(--muted)">No files indexed yet</div>'; return; }
+  list.innerHTML = files.map(f => `
+    <div class="file-item">
+      <div class="file-dot"></div>
+      <div class="file-name">${f.filename}</div>
+      <div class="file-pages">${f.chunks}c</div>
+    </div>`).join('');
+}
+
+document.getElementById('queryInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQuery(); }
+});
+
+function activateNode(name) {
+  document.querySelectorAll('.node').forEach(n => n.classList.remove('active'));
+  const el = document.getElementById(`n-${name}`);
+  if (el) el.classList.add('active');
+}
+
+async function sendQuery() {
+  const input = document.getElementById('queryInput');
+  const btn = document.getElementById('sendBtn');
+  const q = input.value.trim();
+  if (!q) return;
+  document.getElementById('emptyState')?.remove();
+  addMessage('user', q);
+  input.value = '';
+  btn.disabled = true;
+  const thinking = addThinking();
+  const nodes = ['route','retrieve','generate','grade','finalize'];
+  let ni = 0;
+  const nodeInterval = setInterval(() => {
+    if (ni < nodes.length) { activateNode(nodes[ni]); ni++; }
+    else clearInterval(nodeInterval);
+  }, 800);
+  try {
+    const res = await fetch(`${API}/query`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({question: q})
+    });
+    clearInterval(nodeInterval);
+    thinking.remove();
+    if (res.ok) {
+      const data = await res.json();
+      activateNode('finalize');
+      addMessage('assistant', data);
+    } else {
+      addError('query failed — check backend');
+    }
+  } catch(err) {
+    clearInterval(nodeInterval);
+    thinking.remove();
+    addError('server unreachable — is uvicorn running?');
+  }
+  btn.disabled = false;
+  setTimeout(() => document.querySelectorAll('.node').forEach(n => n.classList.remove('active')), 1500);
+}
+
+function addMessage(role, data) {
+  const area = document.getElementById('chatArea');
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  if (role === 'user') {
+    div.innerHTML = `<div class="msg-bubble">${escHtml(data)}</div>`;
+  } else {
+    const score = data.grade?.score ?? 0;
+    const gradeClass = score >= 0.7 ? 'grade-good' : 'grade-bad';
+    const retries = data.retry_count > 0 ? `<span class="retry-badge">retried: ${data.retry_count}x</span>` : '';
+    const sources = data.sources?.length ? `
+      <div class="sources">
+        ${data.sources.map(s => `<div class="source-item">${s.source} · p.${s.page} · ${(s.score||0).toFixed(3)}</div>`).join('')}
+      </div>` : '';
+    div.innerHTML = `
+      <div class="msg-bubble">${escHtml(data.answer || data.final_answer || '')}</div>
+      ${sources}
+      <div class="msg-meta">
+        <span class="grade-badge ${gradeClass}">score: ${score.toFixed(2)}</span>
+        ${retries}
+        <span style="color:var(--muted)">${data.grade?.reason || ''}</span>
+      </div>`;
+  }
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+}
+
+function addThinking() {
+  const area = document.getElementById('chatArea');
+  const div = document.createElement('div');
+  div.className = 'msg assistant';
+  div.innerHTML = `<div class="thinking"><span></span><span></span><span></span></div>`;
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+  return div;
+}
+
+function addError(msg) {
+  const area = document.getElementById('chatArea');
+  const div = document.createElement('div');
+  div.style.cssText = 'font-size:11px;color:var(--error);padding:8px;text-align:center';
+  div.textContent = `✗ ${msg}`;
+  area.appendChild(div);
+}
+
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+}
+</script>
+</body>
+</html>
