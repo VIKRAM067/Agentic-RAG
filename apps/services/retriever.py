@@ -21,6 +21,10 @@ class HybridRetriever(BaseRetriever):
 
     def _build_bm25(self) -> BM25Retriever:
         docs = vector_store.get_all_documents()
+
+        if not docs:
+            return None
+
         bm25 = BM25Retriever.from_documents(docs)
         bm25.k = self.top_k
         return bm25
@@ -56,11 +60,15 @@ class HybridRetriever(BaseRetriever):
 
         elif self.strategy == "keyword":
             bm25 = self._build_bm25()
+            if not bm25:
+                return self._dense_search(query)
             return bm25.invoke(query)
 
         else:
             dense_docs = self._dense_search(query)
             bm25 = self._build_bm25()
+            if not bm25:
+                return dense_docs
             bm25_docs = bm25.invoke(query)
             return self._rrf_fusion(dense_docs, bm25_docs)
 
