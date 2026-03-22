@@ -305,6 +305,13 @@ GROQ_API_KEY=...
 
 ---
 
+## Preview
+
+![preview 1](images/preview_1.png)
+![preview 1](images/preview_2.png)
+
+---
+
 ## Author
 
 **Vikram** — AI Engineer
