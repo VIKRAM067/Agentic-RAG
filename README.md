@@ -6,6 +6,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-REST-009688?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com)
 [![Groq](https://img.shields.io/badge/Groq-LLaMA_3.3_70B-orange?style=flat-square)](https://console.groq.com)
 [![ChromaDB](https://img.shields.io/badge/ChromaDB-Vector_Store-purple?style=flat-square)](https://www.trychroma.com)
+[![SQLite](https://img.shields.io/badge/SQLite-Memory-blue?style=flat-square&logo=sqlite)](https://sqlite.org)
 
 ---
 
@@ -13,7 +14,21 @@
 
 Most RAG systems follow a fixed pipeline: retrieve → answer. **AgenticRAG is different.**
 
-A LangGraph agent makes intelligent decisions at every step — routing queries to the best retrieval strategy, grading its own answers, and self-correcting with HyDE when quality falls below threshold. It doesn't just retrieve; it *thinks*.
+A LangGraph agent makes intelligent decisions at every step — routing queries to the best retrieval strategy, grading its own answers, and self-correcting with HyDE when quality falls below threshold. It remembers your conversations, isolates sessions per user, and knows which documents you've uploaded.
+
+It doesn't just retrieve. It *thinks*.
+
+---
+
+## What's New (v2)
+
+| Feature | Details |
+|---|---|
+| 🧠 Persistent Memory | Full conversation history stored in SQLite per session |
+| 🗂 Session Management | Create, rename, switch, and delete sessions from the UI |
+| 📂 File-Aware Routing | Ask "what documents do you have?" — agent fetches from ChromaDB |
+| 🎯 Document Filtering | Say "search in X.pdf" — retrieval filters to that file only |
+| 🔧 Bug Fixes | Fixed `return` inside loop bugs in ingestion, chain, and vector store |
 
 ---
 
@@ -26,6 +41,9 @@ A LangGraph agent makes intelligent decisions at every step — routing queries 
 | Quality Check | ❌ None | ✅ Judge LLM grades every answer |
 | Retries | ❌ One shot | ✅ Self-corrects with HyDE |
 | Reranking | ❌ None | ✅ Cross-encoder reranker |
+| Conversation Memory | ❌ None | ✅ SQLite per-session history |
+| Session Management | ❌ None | ✅ Full UI — create, rename, delete |
+| Document Filtering | ❌ None | ✅ Query specific PDFs by name |
 | Evaluation | ❌ None | ✅ RAGAS metrics |
 
 ---
@@ -36,25 +54,31 @@ A LangGraph agent makes intelligent decisions at every step — routing queries 
 User Query
     │
     ▼
-┌─────────────────────────────────────────────────────┐
-│                   LangGraph Agent                    │
-│                                                      │
-│  ┌─────────┐    ┌──────────┐    ┌──────────────┐   │
-│  │  Route  │───▶│ Retrieve │───▶│   Generate   │   │
-│  └─────────┘    └──────────┘    └──────┬───────┘   │
-│  decides:       BM25 + Dense           │            │
-│  hybrid /       + RRF Fusion           ▼            │
-│  semantic /     + Reranker      ┌──────────────┐   │
-│  keyword /                      │    Grade     │   │
-│  direct                         └──────┬───────┘   │
-│                                        │            │
-│                              score ≥ 0.7?           │
-│                              YES ──▶ Finalize       │
-│                              NO  ──▶ Retry (HyDE)  │
-└─────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│                     LangGraph Agent                       │
+│                                                          │
+│  ┌─────────┐    ┌──────────┐    ┌──────────────┐        │
+│  │  Route  │───▶│ Retrieve │───▶│   Generate   │        │
+│  └─────────┘    └──────────┘    └──────┬───────┘        │
+│  hybrid /       BM25 + Dense           │                 │
+│  semantic /     + RRF Fusion           ▼                 │
+│  keyword /      + Reranker      ┌──────────────┐        │
+│  direct /       + File Filter   │    Grade     │        │
+│  files                          └──────┬───────┘        │
+│     │                                  │                 │
+│     ▼                        score ≥ 0.7?                │
+│  ┌────────┐                  YES ──▶ Finalize            │
+│  │ Files  │                  NO  ──▶ Retry (HyDE)        │
+│  └────────┘                                              │
+└──────────────────────────────────────────────────────────┘
     │
     ▼
 Answer + Sources + Quality Score
+    │
+    ▼
+┌──────────────────┐
+│  Memory (SQLite) │  ← saves every turn per session
+└──────────────────┘
 ```
 
 ---
@@ -62,25 +86,34 @@ Answer + Sources + Quality Score
 ## Core Concepts
 
 ### 🔀 Hybrid Search
-Combines two retrieval methods for maximum coverage:
+Combines two retrieval methods:
 - **Dense search** — semantic embeddings via ChromaDB (great for conceptual questions)
-- **BM25 sparse search** — keyword matching (great for exact terms, formulas, names)
-- **RRF Fusion** — merges both ranked lists, boosting documents that appear in both
+- **BM25 sparse search** — keyword matching (great for exact terms, names, formulas)
+- **RRF Fusion** — merges both ranked lists, boosting docs that appear in both
 
 ### 🎯 Cross-Encoder Reranking
 Two-pass retrieval for better precision:
-1. Fast bi-encoder retrieves top 5 candidates
-2. Slow cross-encoder scores each candidate against the query — much more accurate
-3. Returns top 3 most relevant chunks
+1. Fast bi-encoder retrieves top N candidates
+2. Slow cross-encoder scores each candidate against the query
+3. Returns top K most relevant chunks
 
 ### 💡 HyDE (Hypothetical Document Embeddings)
-On retries, instead of embedding the raw query, the agent generates a hypothetical ideal answer and embeds *that*. Answer-shaped vectors match document chunks far better than question-shaped vectors.
+On retries, the agent generates a hypothetical ideal answer and embeds *that* instead of the raw query. Answer-shaped vectors match document chunks far better than question-shaped vectors.
 
 ### 🔄 Self-Correcting Agent Loop
-The agent grades its own output using a judge LLM. If the quality score falls below threshold (default: `0.7`), it retries with a different retrieval strategy — up to `MAX_RETRIES` times.
+The agent grades its own output using a judge LLM. If quality falls below threshold (`GRADE_THRESHOLD=0.7`), it retries with HyDE — up to `MAX_RETRIES` times.
+
+### 🧠 Persistent Conversation Memory
+Every query and response is saved to SQLite, keyed by `session_id`. On each request, the last 20 messages are injected into the prompt as `chat_history`, giving the LLM full conversational context.
+
+### 🗂 Session Isolation
+Each conversation gets a unique `session_id` generated on the frontend. Sessions are fully isolated — rename them, switch between them, or delete them without affecting others.
+
+### 📂 File-Aware Agent
+A dedicated `files` route lets users ask "what documents do you have?" and get a live list from ChromaDB. Queries like "search in research_paper.pdf" automatically filter retrieval to that specific document.
 
 ### 📊 RAGAS Evaluation
-Automated quality metrics on every run:
+Automated quality metrics:
 - **Faithfulness** — is the answer grounded in retrieved context?
 - **Answer Relevancy** — does it address the question?
 - **Context Precision** — were retrieved chunks actually useful?
@@ -99,6 +132,7 @@ Automated quality metrics on every run:
 | Sparse Search | rank-bm25 |
 | Reranker | cross-encoder/ms-marco-MiniLM-L-6-v2 |
 | LLM Framework | LangChain |
+| Memory | SQLite (via Python built-in sqlite3) |
 | API | FastAPI |
 | Evaluation | RAGAS |
 
@@ -110,31 +144,35 @@ Automated quality metrics on every run:
 Agentic-RAG/
 ├── apps/
 │   ├── core/
-│   │   ├── config.py          # Central settings via pydantic-settings
-│   │   └── prompts.py         # All LangChain prompt templates
+│   │   ├── config.py              # Central settings via pydantic-settings
+│   │   └── prompts.py             # All LangChain prompt templates
 │   ├── services/
-│   │   ├── embeddings.py      # SentenceTransformer embedding manager
-│   │   ├── vector_store.py    # ChromaDB wrapper
-│   │   ├── ingestion.py       # PDF loading + chunking pipeline
-│   │   ├── retriever.py       # Hybrid retriever (BM25 + Dense + RRF)
-│   │   ├── reranker.py        # Cross-encoder reranker
-│   │   └── chain.py           # LCEL RAG chain
+│   │   ├── embeddings.py          # SentenceTransformer embedding manager
+│   │   ├── vector_store.py        # ChromaDB wrapper with filter support
+│   │   ├── ingestion.py           # PDF loading + chunking pipeline
+│   │   ├── retriever.py           # Hybrid retriever (BM25 + Dense + RRF)
+│   │   ├── reranker.py            # Cross-encoder reranker
+│   │   ├── chain.py               # LCEL RAG chain
+│   │   └── memory.py              # SQLite conversation memory manager
 │   ├── agent/
-│   │   └── graph.py           # LangGraph state machine + all nodes
+│   │   └── graph.py               # LangGraph state machine + all nodes
 │   ├── api/
-│   │   ├── schemas.py         # Pydantic request/response models
+│   │   ├── schemas.py             # Pydantic request/response models
 │   │   └── routes/
-│   │       ├── ingest.py      # POST /ingest
-│   │       ├── query.py       # POST /query
-│   │       └── evaluate.py    # POST /evaluate
+│   │       ├── ingest.py          # POST /ingest
+│   │       ├── query.py           # POST /query
+│   │       ├── sessions.py        # GET/PUT/DELETE /sessions
+│   │       └── evaluate.py        # POST /evaluate
 │   ├── evaluation/
-│   │   └── ragas_eval.py      # RAGAS evaluation pipeline
-│   └── main.py                # FastAPI entry point
+│   │   └── ragas_eval.py          # RAGAS evaluation pipeline
+│   └── main.py                    # FastAPI entry point
 ├── data/
-│   ├── uploads/               # Uploaded PDFs
-│   └── vector_store/          # ChromaDB persistence
-├── frontend.html              # Single-file frontend
-├── .env.example               # Environment variable template
+│   ├── uploads/                   # Uploaded PDFs
+│   ├── vector_store/              # ChromaDB persistence
+│   └── chat_memory.db             # SQLite conversation history
+├── frontend.html                  # Single-file dark terminal UI
+├── .env.example                   # Environment variable template
+├── .gitignore
 └── requirements.txt
 ```
 
@@ -173,10 +211,7 @@ uvicorn apps.main:app --reload
 
 ### 4. Open the frontend
 
-Open `frontend.html` in your browser or visit:
-```
-http://localhost:8000/docs
-```
+Open `frontend.html` directly in your browser.
 
 ---
 
@@ -199,15 +234,13 @@ curl -X POST http://localhost:8000/ingest \
 }
 ```
 
----
-
 ### `POST /query`
-Ask a question about your uploaded documents.
+Ask a question. Pass a `session_id` to enable conversation memory.
 
 ```bash
 curl -X POST http://localhost:8000/query \
   -H "Content-Type: application/json" \
-  -d '{"question": "what is gradient descent?"}'
+  -d '{"question": "what is gradient descent?", "session_id": "sess_abc123"}'
 ```
 
 ```json
@@ -215,21 +248,36 @@ curl -X POST http://localhost:8000/query \
   "answer": "Gradient descent is an optimization algorithm... [Source: lecture.pdf, Page: 3]",
   "sources": [{"source": "lecture.pdf", "page": 3, "score": 0.921}],
   "grade": {"score": 0.87, "reason": "answer is faithful and relevant"},
-  "retry_count": 0
+  "retry_count": 0,
+  "session_id": "sess_abc123"
 }
 ```
 
----
+### `GET /sessions`
+List all sessions.
+
+### `PUT /sessions/{session_id}`
+Rename a session.
+
+```json
+{ "name": "AI Research Chat" }
+```
+
+### `DELETE /sessions/{session_id}`
+Delete a single session and its history.
+
+### `DELETE /sessions`
+Delete all sessions.
 
 ### `POST /evaluate`
-Run RAGAS evaluation on your system.
+Run RAGAS evaluation.
 
 ```bash
 curl -X POST http://localhost:8000/evaluate \
   -H "Content-Type: application/json" \
   -d '{
     "questions": ["what is gradient descent?"],
-    "ground_truths": ["Gradient descent is an optimization algorithm that minimizes loss..."]
+    "ground_truths": ["Gradient descent minimizes loss by following the negative gradient..."]
   }'
 ```
 
@@ -246,33 +294,21 @@ curl -X POST http://localhost:8000/evaluate \
 
 ## Configuration
 
-All settings configurable via `.env`:
+All settings in `.env`:
 
 ```env
 # LLM
 GROQ_API_KEY=...
-GROQ_MODEL=llama-3.3-70b-versatile
-LLM_TEMPERATURE=0.3
 
-# Retrieval
-TOP_K=5
-BM25_WEIGHT=0.4
-DENSE_WEIGHT=0.6
 
-# Reranker
-RERANKER_TOP_N=3
-
-# Agent
-MAX_RETRIES=2
-GRADE_THRESHOLD=0.7
 ```
 
 ---
 
 ## Author
 
-**Vikram** — Junior AI Engineer
-Building production-grade AI systems.
+**Vikram** — AI Engineer
+Building production-grade AI systems from scratch.
 Open to AI Engineering roles.
 
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Vikram-blue?style=flat-square&logo=linkedin)](https://www.linkedin.com/in/vikramv2002/)
