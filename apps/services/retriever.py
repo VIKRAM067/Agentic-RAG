@@ -1,10 +1,9 @@
-from langchain_core.retrievers import BaseRetriever
-from langchain_core.documents import Document
-from langchain_core.callbacks.manager import CallbackManagerForRetrieverRun
 from langchain_community.retrievers import BM25Retriever
+from langchain_core.retrievers import BaseRetriever
+from langchain_core.callbacks import CallbackManagerForRetrieverRun
+from langchain_core.documents import Document
 from apps.core.config import settings
 from apps.services.vector_store import vector_store
-from apps.services.embeddings import embeddingManager
 from typing import List, Optional
 
 
@@ -14,23 +13,28 @@ class HybridRetriever(BaseRetriever):
     bm25_weight: float = settings.bm25_weight
     dense_weight: float = settings.dense_weight
     strategy: str = "hybrid"
-    _bm25: Optional[object] = None
+    filter_source: Optional[str] = None
 
     class Config:
         arbitrary_types_allowed = True
 
     def _build_bm25(self) -> BM25Retriever:
         docs = vector_store.get_all_documents()
-
         if not docs:
             return None
-
+        if self.filter_source:
+            docs = [d for d in docs if d.metadata.get("source") == self.filter_source]
+        if not docs:
+            return None
         bm25 = BM25Retriever.from_documents(docs)
         bm25.k = self.top_k
         return bm25
 
     def _dense_search(self, query: str) -> List[Document]:
-        return vector_store.similarity_search(query)
+        where_filter = None
+        if self.filter_source:
+            where_filter = {"source": self.filter_source}
+        return vector_store.similarity_search(query, filter=where_filter)
 
     def _rrf_fusion(
         self, dense_docs: List[Document], bm25_docs: List[Document]
@@ -39,7 +43,7 @@ class HybridRetriever(BaseRetriever):
         doc_map = {}
 
         for rank, doc in enumerate(dense_docs):
-            key = doc.page_content[:100]  # Use a unique identifier for the document
+            key = doc.page_content[:100]
             scores[key] = scores.get(key, 0) + self.dense_weight * (1 / (60 + rank + 1))
             doc_map[key] = doc
 
@@ -49,7 +53,6 @@ class HybridRetriever(BaseRetriever):
             doc_map[key] = doc
 
         sorted_keys = sorted(scores, key=scores.get, reverse=True)
-
         return [doc_map[key] for key in sorted_keys[: self.top_k]]
 
     def _get_relevant_documents(

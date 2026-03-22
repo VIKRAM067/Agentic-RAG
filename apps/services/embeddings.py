@@ -12,6 +12,9 @@ class EmbeddingManager:
     def embed_texts(self, texts: List[str]) -> np.ndarray:
         return self.model.encode(texts)
 
+    def embed_documents(self, texts: List[str]) -> np.ndarray:
+        return self.embed_texts(texts)
+
     def embed_query(self, query: str) -> np.ndarray:
         return self.model.encode([query])[0]
 

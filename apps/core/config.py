@@ -21,13 +21,13 @@ class Settings(BaseSettings):
     chroma_collection_name: str = Field(default="agentic_rag")
 
     # Retrieval
-    top_k: int = Field(default=5)
+    top_k: int = Field(default=8)
     bm25_weight: float = Field(default=0.4)
     dense_weight: float = Field(default=0.6)
 
     # Reranker
     reranker_model: str = Field(default="cross-encoder/ms-marco-MiniLM-L-6-v2")
-    reranker_top_n: int = Field(default=3)
+    reranker_top_n: int = Field(default=5)
 
     # Chunking
     parent_chunk_size: int = Field(default=1500)

@@ -16,14 +16,12 @@ class IngestionManager:
 
     def load_docs(self, file_path: str) -> List[Document]:
         load = PyMuPDFLoader(file_path)
-
-        # adding the file name to each document's metadata
         file_name = Path(file_path).name
         documents = load.load()
         for doc in documents:
             doc.metadata["source"] = file_name
 
-            return documents
+        return documents  # ← outside loop
 
     def chunk_docs(self, documents: List[Document]) -> List[Document]:
         chunked_docs = []
@@ -34,7 +32,7 @@ class IngestionManager:
                     page_content=chunk, metadata={**doc.metadata, "chunk_index": i}
                 )
                 chunked_docs.append(chunk_doc)
-                return chunked_docs
+        return chunked_docs  # ← outside both loops
 
     def ingest(self, file_path: str) -> dict:
         loaded_docs = self.load_docs(file_path)

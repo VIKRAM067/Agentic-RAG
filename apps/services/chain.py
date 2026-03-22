@@ -29,7 +29,7 @@ def format_context(documents: List[Document]) -> str:
         context_parts.append(
             f"[Document {i} | Source: {source}, Page: {page}]\n{doc.page_content}"
         )
-        return "\n\n---\n\n".join(context_parts)
+    return "\n\n---\n\n".join(context_parts)  # ← outside loop
 
 
 def build_rag_chain():
@@ -43,7 +43,8 @@ def build_rag_chain():
                     )
                 )
             ),
-            "question": RunnablePassthrough(),
+            "question": RunnableLambda(lambda q: q["question"]),
+            "chat_history": RunnableLambda(lambda q: q.get("chat_history", [])),
         }
         | rag_prompt
         | llm

@@ -1,27 +1,42 @@
 from langgraph.graph import StateGraph, END
-from typing import TypedDict, List
+from typing import TypedDict, List, Optional
 from langchain_core.documents import Document
 from apps.core.config import settings
-from apps.core.prompts import router_prompt, rag_prompt
+from apps.core.prompts import router_prompt
 from apps.services.retriever import hybrid_retriever
 from apps.services.reranker import reranker
 from apps.services.chain import get_llm, format_context, grade_answer, rag_chain
+from apps.services.vector_store import vector_store
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.messages import HumanMessage, SystemMessage
 import json
 
 
 class AgentState(TypedDict):
     question: str
     strategy: str
+    chat_history: List[dict]
     documents: List[Document]
     context: str
     answer: str
     grade: dict
     retry_count: int
     final_answer: str
+    filter_source: Optional[str]
 
 
-def route_Node(state: AgentState) -> str:
+def extract_filename(question: str) -> Optional[str]:
+    question_lower = question.lower()
+    all_docs = vector_store.collection.get(include=["metadatas"])
+    filenames = set(m.get("source", "") for m in all_docs["metadatas"])
+    for filename in filenames:
+        name_without_ext = filename.lower().replace(".pdf", "").replace("_", " ")
+        if name_without_ext in question_lower or filename.lower() in question_lower:
+            return filename
+    return None  # ← outside loop
+
+
+def route_Node(state: AgentState) -> AgentState:
     llm = get_llm()
     router_chain = router_prompt | llm | StrOutputParser()
     result = router_chain.invoke({"question": state["question"]})
@@ -29,18 +44,64 @@ def route_Node(state: AgentState) -> str:
         parsed = json.loads(result)
         strategy = parsed.get("strategy", "hybrid")
     except json.JSONDecodeError:
-        strategy = "hybrid"  # fallback if parsing fails
+        strategy = "hybrid"
 
-    return {**state, "strategy": strategy}
+    filter_source = extract_filename(state["question"])
+    return {**state, "strategy": strategy, "filter_source": filter_source}
+
+
+def direct_node(state: AgentState) -> AgentState:
+    llm = get_llm()
+    recent_history = state.get("chat_history", [])
+
+    messages = [
+        SystemMessage(
+            content="""You are a helpful assistant with memory of this conversation.
+CRITICAL RULES:
+- The LAST message in history always overrides earlier messages
+- If the user updated their name, use the LATEST name only
+- If the user corrected any information, always use the MOST RECENT version
+- Never contradict what was most recently established"""
+        ),
+        *recent_history,
+        HumanMessage(content=state["question"]),
+    ]
+
+    answer = llm.invoke(messages).content
+    return {
+        **state,
+        "answer": answer,
+        "context": "",
+        "documents": [],
+        "grade": {"score": 1.0, "reason": "direct answer"},
+    }
+
+
+def files_node(state: AgentState) -> AgentState:
+    all_docs = vector_store.collection.get(include=["metadatas"])
+    filenames = list(set(m.get("source", "unknown") for m in all_docs["metadatas"]))
+
+    if filenames:
+        file_list = "\n".join(f"- {f}" for f in filenames)
+        answer = f"Here are the documents I have access to:\n{file_list}"
+    else:
+        answer = "No documents are currently indexed."
+
+    return {  # ← outside both if/else blocks
+        **state,
+        "answer": answer,
+        "context": "",
+        "documents": [],
+        "grade": {"score": 1.0, "reason": "files list"},
+    }
 
 
 def retrieve_Node(state: AgentState) -> AgentState:
     hybrid_retriever.strategy = state["strategy"]
+    hybrid_retriever.filter_source = state.get("filter_source")
 
     docs = hybrid_retriever.invoke(state["question"])
-
     reranked_docs = reranker.rerank(state["question"], docs)
-
     context = format_context(reranked_docs)
 
     return {**state, "documents": reranked_docs, "context": context}
@@ -48,7 +109,11 @@ def retrieve_Node(state: AgentState) -> AgentState:
 
 def generate_Node(state: AgentState) -> AgentState:
     answer = rag_chain.invoke(
-        {"question": state["question"], "context": state["context"]}
+        {
+            "question": state["question"],
+            "context": state["context"],
+            "chat_history": state.get("chat_history", []),
+        }
     )
     return {**state, "answer": answer}
 
@@ -90,16 +155,30 @@ def build_agent():
     workflow.add_node("grade", grade_Node)
     workflow.add_node("retry", retry_node)
     workflow.add_node("finalize", finalize_node)
+    workflow.add_node("direct", direct_node)
+    workflow.add_node("files", files_node)
 
     # entry point
     workflow.set_entry_point("route")
 
     # fixed edges
-    workflow.add_edge("route", "retrieve")
     workflow.add_edge("retrieve", "generate")
     workflow.add_edge("generate", "grade")
     workflow.add_edge("retry", "retrieve")
+    workflow.add_edge("direct", "finalize")
+    workflow.add_edge("files", "finalize")
     workflow.add_edge("finalize", END)
+
+    # conditional edge after route
+    workflow.add_conditional_edges(
+        "route",
+        lambda s: (
+            "direct" if s["strategy"] == "direct"
+            else "files" if s["strategy"] == "files"
+            else "retrieve"
+        ),
+        {"direct": "direct", "files": "files", "retrieve": "retrieve"},
+    )
 
     # conditional edge — retry or finalize?
     workflow.add_conditional_edges(

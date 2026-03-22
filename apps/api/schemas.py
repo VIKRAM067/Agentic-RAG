@@ -13,6 +13,8 @@ class IngestResponse(BaseModel):
 # ── Query ──────────────────────────────────────────────
 class QueryRequest(BaseModel):
     question: str
+    session_id: str
+    chat_history: list = []
 
 
 class QueryResponse(BaseModel):
@@ -20,6 +22,7 @@ class QueryResponse(BaseModel):
     sources: List[dict]
     grade: dict
     retry_count: int
+    session_id: str
 
 
 # ── Evaluate ───────────────────────────────────────────

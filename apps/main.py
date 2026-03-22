@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from apps.api.routes import ingest, query, evaluate
+from apps.api.routes import ingest, query, evaluate, sessions
 from apps.core.config import settings
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -16,6 +16,7 @@ app.add_middleware(
 app.include_router(ingest.router)
 app.include_router(query.router)
 app.include_router(evaluate.router)
+app.include_router(sessions.router)
 
 
 @app.get("/")

@@ -9,6 +9,7 @@ rag_prompt = ChatPromptTemplate.from_messages(
     Always cite the sources like [Source: filename, Page: X].
     If context is insufficient say: I don't have enough information.""",
         ),
+        ("placeholder", "{chat_history}"),
         ("human", "question: {question} \n\n context: {context}"),
     ]
 )
@@ -44,13 +45,14 @@ router_prompt = ChatPromptTemplate.from_messages(
     Your job is to decide the best retrieval strategy for the given question.
 
     Choose one of these strategies:
-        - "hybrid"   → use for most questions (semantic + keyword search)
+        - "hybrid"   → use for most questions including when user asks about content inside a specific file (e.g. "search in this pdf", "what does X say in Y.pdf")
         - "semantic" → use for conceptual questions (explain, why, how does)
         - "keyword"  → use for exact terms (formulas, names, codes)
         - "direct"   → use when no document search needed (greetings, small talk)
+        - "files"    → use ONLY when user asks to LIST what documents are available (e.g. "what files do you have", "list your documents"). Do NOT use if the user is asking a question about content inside a specific file.
 
         Return ONLY this JSON:
-            {{"strategy": "hybrid|semantic|keyword|direct", "reason": "one sentence"}}
+            {{"strategy": "hybrid|semantic|keyword|direct|files", "reason": "one sentence"}}
             """,
         ),
         ("human", "Question: {question}"),
