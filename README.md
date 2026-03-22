@@ -1,19 +1,32 @@
 # AgenticRAG 🤖
+> A production-grade, self-correcting Agentic RAG system powered by LangGraph
 
-A production-grade self-correcting Agentic RAG system built with LangGraph. Instead of a simple retrieve → answer pipeline, a LangGraph agent makes decisions at every step — routing queries, retrieving documents, grading its own answers, and retrying with a smarter strategy when quality is too low.
+[![Python](https://img.shields.io/badge/Python-3.10+-blue?style=flat-square&logo=python)](https://python.org)
+[![LangGraph](https://img.shields.io/badge/LangGraph-Agent-green?style=flat-square)](https://langchain-ai.github.io/langgraph/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-REST-009688?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com)
+[![Groq](https://img.shields.io/badge/Groq-LLaMA_3.3_70B-orange?style=flat-square)](https://console.groq.com)
+[![ChromaDB](https://img.shields.io/badge/ChromaDB-Vector_Store-purple?style=flat-square)](https://www.trychroma.com)
 
 ---
 
-## What Makes This Different From a Basic RAG
+## What is AgenticRAG?
 
-| Basic RAG | AgenticRAG |
-|---|---|
-| Fixed retrieval strategy | Agent routes to best strategy per query |
-| Dense search only | Hybrid search (BM25 + Dense + RRF) |
-| No quality check | Judge LLM grades every answer |
-| One shot — no retries | Self-corrects with HyDE on retry |
-| No reranking | Cross-encoder reranker for precision |
-| No evaluation | RAGAS metrics (faithfulness, relevancy, precision, recall) |
+Most RAG systems follow a fixed pipeline: retrieve → answer. **AgenticRAG is different.**
+
+A LangGraph agent makes intelligent decisions at every step — routing queries to the best retrieval strategy, grading its own answers, and self-correcting with HyDE when quality falls below threshold. It doesn't just retrieve; it *thinks*.
+
+---
+
+## Basic RAG vs AgenticRAG
+
+| Feature | Basic RAG | AgenticRAG |
+|---|---|---|
+| Retrieval Strategy | Fixed | Agent routes per query |
+| Search Type | Dense only | Hybrid (BM25 + Dense + RRF) |
+| Quality Check | ❌ None | ✅ Judge LLM grades every answer |
+| Retries | ❌ One shot | ✅ Self-corrects with HyDE |
+| Reranking | ❌ None | ✅ Cross-encoder reranker |
+| Evaluation | ❌ None | ✅ RAGAS metrics |
 
 ---
 
@@ -30,9 +43,9 @@ User Query
 │  │  Route  │───▶│ Retrieve │───▶│   Generate   │   │
 │  └─────────┘    └──────────┘    └──────┬───────┘   │
 │  decides:       BM25 + Dense           │            │
-│  hybrid/        + RRF Fusion           ▼            │
-│  semantic/      + Reranker      ┌──────────────┐   │
-│  keyword/                       │    Grade     │   │
+│  hybrid /       + RRF Fusion           ▼            │
+│  semantic /     + Reranker      ┌──────────────┐   │
+│  keyword /                      │    Grade     │   │
 │  direct                         └──────┬───────┘   │
 │                                        │            │
 │                              score ≥ 0.7?           │
@@ -48,26 +61,26 @@ Answer + Sources + Quality Score
 
 ## Core Concepts
 
-### Hybrid Search
-Combines two retrieval methods:
+### 🔀 Hybrid Search
+Combines two retrieval methods for maximum coverage:
 - **Dense search** — semantic embeddings via ChromaDB (great for conceptual questions)
 - **BM25 sparse search** — keyword matching (great for exact terms, formulas, names)
 - **RRF Fusion** — merges both ranked lists, boosting documents that appear in both
 
-### Cross-Encoder Reranking
+### 🎯 Cross-Encoder Reranking
 Two-pass retrieval for better precision:
 1. Fast bi-encoder retrieves top 5 candidates
-2. Slow cross-encoder scores each candidate against the query together — much more accurate
+2. Slow cross-encoder scores each candidate against the query — much more accurate
 3. Returns top 3 most relevant chunks
 
-### HyDE (Hypothetical Document Embeddings)
-On retries, instead of embedding the raw query, the agent generates a hypothetical ideal answer and embeds that. Answer-shaped vectors match document chunks far better than question-shaped vectors.
+### 💡 HyDE (Hypothetical Document Embeddings)
+On retries, instead of embedding the raw query, the agent generates a hypothetical ideal answer and embeds *that*. Answer-shaped vectors match document chunks far better than question-shaped vectors.
 
-### Self-Correcting Agent Loop
-The agent grades its own output using a judge LLM. If the quality score falls below the threshold (default: 0.7), it retries with a different retrieval strategy — up to `MAX_RETRIES` times.
+### 🔄 Self-Correcting Agent Loop
+The agent grades its own output using a judge LLM. If the quality score falls below threshold (default: `0.7`), it retries with a different retrieval strategy — up to `MAX_RETRIES` times.
 
-### RAGAS Evaluation
-Automated quality metrics:
+### 📊 RAGAS Evaluation
+Automated quality metrics on every run:
 - **Faithfulness** — is the answer grounded in retrieved context?
 - **Answer Relevancy** — does it address the question?
 - **Context Precision** — were retrieved chunks actually useful?
@@ -94,7 +107,7 @@ Automated quality metrics:
 ## Project Structure
 
 ```
-agenticRAG/
+Agentic-RAG/
 ├── apps/
 │   ├── core/
 │   │   ├── config.py          # Central settings via pydantic-settings
@@ -121,7 +134,7 @@ agenticRAG/
 │   ├── uploads/               # Uploaded PDFs
 │   └── vector_store/          # ChromaDB persistence
 ├── frontend.html              # Single-file frontend
-├── .env                       # Environment variables
+├── .env.example               # Environment variable template
 └── requirements.txt
 ```
 
@@ -132,10 +145,10 @@ agenticRAG/
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/yourusername/agenticRAG
-cd agenticRAG
-python -m venv .venv
-source .venv/bin/activate
+git clone https://github.com/VIKRAM067/Agentic-RAG.git
+cd Agentic-RAG
+python -m venv .RAGvenv
+source .RAGvenv/bin/activate
 pip install -r requirements.txt
 ```
 
@@ -146,11 +159,11 @@ cp .env.example .env
 ```
 
 Edit `.env`:
-```
+```env
 GROQ_API_KEY=your_groq_api_key_here
 ```
 
-Get your free Groq API key at [console.groq.com](https://console.groq.com)
+> Get your free Groq API key at [console.groq.com](https://console.groq.com)
 
 ### 3. Run
 
@@ -158,13 +171,16 @@ Get your free Groq API key at [console.groq.com](https://console.groq.com)
 uvicorn apps.main:app --reload
 ```
 
-### 4. Open frontend
+### 4. Open the frontend
 
-Open `frontend.html` in your browser.
+Open `frontend.html` in your browser or visit:
+```
+http://localhost:8000/docs
+```
 
 ---
 
-## API Endpoints
+## API Reference
 
 ### `POST /ingest`
 Upload a PDF for indexing.
@@ -174,7 +190,6 @@ curl -X POST http://localhost:8000/ingest \
   -F "file=@your_document.pdf"
 ```
 
-Response:
 ```json
 {
   "status": "success",
@@ -187,7 +202,7 @@ Response:
 ---
 
 ### `POST /query`
-Ask a question about your documents.
+Ask a question about your uploaded documents.
 
 ```bash
 curl -X POST http://localhost:8000/query \
@@ -195,7 +210,6 @@ curl -X POST http://localhost:8000/query \
   -d '{"question": "what is gradient descent?"}'
 ```
 
-Response:
 ```json
 {
   "answer": "Gradient descent is an optimization algorithm... [Source: lecture.pdf, Page: 3]",
@@ -219,7 +233,6 @@ curl -X POST http://localhost:8000/evaluate \
   }'
 ```
 
-Response:
 ```json
 {
   "faithfulness": 0.91,
@@ -233,9 +246,9 @@ Response:
 
 ## Configuration
 
-All settings are in `.env`:
+All settings configurable via `.env`:
 
-```
+```env
 # LLM
 GROQ_API_KEY=...
 GROQ_MODEL=llama-3.3-70b-versatile
@@ -256,19 +269,10 @@ GRADE_THRESHOLD=0.7
 
 ---
 
-## Interactive Docs
-
-FastAPI auto-generates interactive API docs at:
-```
-http://localhost:8000/docs
-```
-
----
-
 ## Author
 
-**Vikram** — Junior AI Engineer  
-Building production-grade AI systems.  
+**Vikram** — Junior AI Engineer
+Building production-grade AI systems.
 Open to AI Engineering roles.
 
-[LinkedIn](https://www.linkedin.com/in/vikramv2002/)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Vikram-blue?style=flat-square&logo=linkedin)](https://www.linkedin.com/in/vikramv2002/)
