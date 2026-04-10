@@ -1,5 +1,8 @@
 from pydantic_settings import BaseSettings
 from pydantic import Field
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 class Settings(BaseSettings):
@@ -42,6 +45,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"  # read from this file
         case_sensitive = False  # # GROQ_API_KEY == groq_api_key
+        extra = "allow"  # allow extra fields in .env that are not defined here
 
 
 settings = Settings()

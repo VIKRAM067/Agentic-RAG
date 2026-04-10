@@ -1,4 +1,5 @@
 from langgraph.graph import StateGraph, END
+from langsmith import traceable
 from typing import TypedDict, List, Optional
 from langchain_core.documents import Document
 from apps.core.config import settings
@@ -10,6 +11,12 @@ from apps.services.vector_store import vector_store
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.messages import HumanMessage, SystemMessage
 import json
+
+import os
+
+print("LANGCHAIN_TRACING_V2 =", os.getenv("LANGCHAIN_TRACING_V2"))
+print("LANGCHAIN_PROJECT =", os.getenv("LANGCHAIN_PROJECT"))
+print("LANGCHAIN_API_KEY exists =", bool(os.getenv("LANGCHAIN_API_KEY")))
 
 
 class AgentState(TypedDict):
@@ -36,6 +43,7 @@ def extract_filename(question: str) -> Optional[str]:
     return None  # ← outside loop
 
 
+@traceable(name="route_Node")  # for trace visibility in LangSmith
 def route_Node(state: AgentState) -> AgentState:
     llm = get_llm()
     router_chain = router_prompt | llm | StrOutputParser()
@@ -50,6 +58,7 @@ def route_Node(state: AgentState) -> AgentState:
     return {**state, "strategy": strategy, "filter_source": filter_source}
 
 
+@traceable(name="direct_node")  # for trace visibility in LangSmith
 def direct_node(state: AgentState) -> AgentState:
     llm = get_llm()
     recent_history = state.get("chat_history", [])
@@ -77,6 +86,7 @@ CRITICAL RULES:
     }
 
 
+@traceable(name="files_node")  # for trace visibility in LangSmith
 def files_node(state: AgentState) -> AgentState:
     all_docs = vector_store.collection.get(include=["metadatas"])
     filenames = list(set(m.get("source", "unknown") for m in all_docs["metadatas"]))
@@ -96,6 +106,7 @@ def files_node(state: AgentState) -> AgentState:
     }
 
 
+@traceable(name="retrieve_Node")  # for trace visibility in LangSmith
 def retrieve_Node(state: AgentState) -> AgentState:
     hybrid_retriever.strategy = state["strategy"]
     hybrid_retriever.filter_source = state.get("filter_source")
@@ -107,6 +118,7 @@ def retrieve_Node(state: AgentState) -> AgentState:
     return {**state, "documents": reranked_docs, "context": context}
 
 
+@traceable(name="generate_Node")  # for trace visibility
 def generate_Node(state: AgentState) -> AgentState:
     answer = rag_chain.invoke(
         {
@@ -118,15 +130,18 @@ def generate_Node(state: AgentState) -> AgentState:
     return {**state, "answer": answer}
 
 
+@traceable(name="grade_Node")
 def grade_Node(state: AgentState) -> AgentState:
     grade = grade_answer(state["question"], state["context"], state["answer"])
     return {**state, "grade": grade}
 
 
+@traceable(name="finalize_Node")
 def finalize_node(state: AgentState) -> AgentState:
     return {**state, "final_answer": state["answer"]}
 
 
+@traceable(name="retry_Node")
 def retry_node(state: AgentState) -> AgentState:
     retry_count = state.get("retry_count", 0) + 1
     return {**state, "retry_count": retry_count}
@@ -173,9 +188,9 @@ def build_agent():
     workflow.add_conditional_edges(
         "route",
         lambda s: (
-            "direct" if s["strategy"] == "direct"
-            else "files" if s["strategy"] == "files"
-            else "retrieve"
+            "direct"
+            if s["strategy"] == "direct"
+            else "files" if s["strategy"] == "files" else "retrieve"
         ),
         {"direct": "direct", "files": "files", "retrieve": "retrieve"},
     )
